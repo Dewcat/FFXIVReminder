@@ -1,0 +1,117 @@
+import json
+import os
+import sys
+import urllib.parse
+import urllib.request
+from datetime import datetime
+from pathlib import Path
+from zoneinfo import ZoneInfo
+
+STATE_PATH = Path("state/reminder_state.json")
+
+BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
+CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
+TARGET_USERNAME = os.getenv("TELEGRAM_TARGET_USERNAME", "tsuyuneko").lstrip("@").lower()
+TARGET_USER_ID = os.getenv("TELEGRAM_TARGET_USER_ID", "").strip()
+REMINDER_MESSAGE = os.getenv("REMINDER_MESSAGE", "记得上号保部队房")
+TIMEZONE = os.getenv("REMINDER_TIMEZONE", "Asia/Shanghai")
+
+API_BASE = f"https://api.telegram.org/bot{BOT_TOKEN}"
+
+
+def telegram_api(method: str, params: dict | None = None) -> dict:
+    params = params or {}
+    data = urllib.parse.urlencode(params).encode("utf-8")
+    request = urllib.request.Request(f"{API_BASE}/{method}", data=data, method="POST")
+    with urllib.request.urlopen(request, timeout=30) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    if not payload.get("ok"):
+        raise RuntimeError(f"Telegram API {method} failed: {payload}")
+    return payload
+
+
+def load_state() -> dict:
+    if not STATE_PATH.exists():
+        return {}
+    try:
+        return json.loads(STATE_PATH.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+
+
+def save_state(state: dict) -> None:
+    STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    STATE_PATH.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def current_month() -> str:
+    return datetime.now(ZoneInfo(TIMEZONE)).strftime("%Y-%m")
+
+
+def is_target_user(user: dict) -> bool:
+    if TARGET_USER_ID and str(user.get("id")) == TARGET_USER_ID:
+        return True
+    return (user.get("username") or "").lower() == TARGET_USERNAME
+
+
+def consume_target_replies(state: dict) -> bool:
+    params = {
+        "timeout": 0,
+        "allowed_updates": json.dumps(["message"]),
+    }
+    if "last_update_id" in state:
+        params["offset"] = int(state["last_update_id"]) + 1
+
+    payload = telegram_api("getUpdates", params)
+    updates = payload.get("result", [])
+
+    found_reply = False
+    for update in updates:
+        update_id = update.get("update_id")
+        if update_id is not None:
+            state["last_update_id"] = max(int(state.get("last_update_id", update_id)), int(update_id))
+
+        message = update.get("message") or {}
+        user = message.get("from") or {}
+        text = message.get("text")
+        if text and is_target_user(user):
+            found_reply = True
+
+    return found_reply
+
+
+def send_reminder() -> None:
+    telegram_api("sendMessage", {"chat_id": CHAT_ID, "text": REMINDER_MESSAGE})
+
+
+def main() -> int:
+    state = load_state()
+    month_key = current_month()
+
+    if state.get("month") != month_key:
+        state = {
+            "month": month_key,
+            "acknowledged": False,
+            "last_update_id": state.get("last_update_id"),
+        }
+
+    if consume_target_replies(state):
+        state["acknowledged"] = True
+        save_state(state)
+        print("Target user replied. Reminder is paused until next month.")
+        return 0
+
+    if state.get("acknowledged"):
+        save_state(state)
+        print("Already acknowledged this month. No reminder sent.")
+        return 0
+
+    send_reminder()
+    state["last_sent_at"] = datetime.now(ZoneInfo(TIMEZONE)).isoformat()
+    save_state(state)
+    print("Reminder sent.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
