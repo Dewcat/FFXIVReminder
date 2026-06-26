@@ -10,9 +10,9 @@ from zoneinfo import ZoneInfo
 STATE_PATH = Path("state/reminder_state.json")
 
 BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
-CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 TARGET_USERNAME = os.getenv("TELEGRAM_TARGET_USERNAME", "tsuyuneko").lstrip("@").lower()
-TARGET_USER_ID = os.getenv("TELEGRAM_TARGET_USER_ID", "").strip()
+TARGET_USER_ID = os.getenv("TELEGRAM_TARGET_USER_ID", "1445032357").strip()
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip() or TARGET_USER_ID
 REMINDER_MESSAGE = os.getenv("REMINDER_MESSAGE", "记得上号保部队房")
 TIMEZONE = os.getenv("REMINDER_TIMEZONE", "Asia/Shanghai")
 
@@ -85,6 +85,9 @@ def send_reminder() -> None:
 
 
 def main() -> int:
+    if not CHAT_ID:
+        raise RuntimeError("Set TELEGRAM_CHAT_ID or TELEGRAM_TARGET_USER_ID.")
+
     state = load_state()
     month_key = current_month()
 
