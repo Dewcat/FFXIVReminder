@@ -61,6 +61,15 @@ def is_target_user(user: dict) -> bool:
     return bool(TARGET_USER_ID) and str(user.get("id")) == TARGET_USER_ID
 
 
+def normalize_update_id(value):
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def consume_target_replies(state: dict) -> bool:
     if not TARGET_USER_ID:
         print("Warning: TELEGRAM_TARGET_USER_ID is not set, so reply detection is disabled for this run.")
@@ -70,8 +79,9 @@ def consume_target_replies(state: dict) -> bool:
         "timeout": 0,
         "allowed_updates": json.dumps(["message"]),
     }
-    if "last_update_id" in state:
-        params["offset"] = int(state["last_update_id"]) + 1
+    last_update_id = normalize_update_id(state.get("last_update_id"))
+    if last_update_id is not None:
+        params["offset"] = last_update_id + 1
 
     try:
         payload = telegram_api("getUpdates", params)
@@ -85,9 +95,10 @@ def consume_target_replies(state: dict) -> bool:
     updates = payload.get("result", [])
     found_reply = False
     for update in updates:
-        update_id = update.get("update_id")
+        update_id = normalize_update_id(update.get("update_id"))
         if update_id is not None:
-            state["last_update_id"] = max(int(state.get("last_update_id", update_id)), int(update_id))
+            previous_update_id = normalize_update_id(state.get("last_update_id"))
+            state["last_update_id"] = max(previous_update_id or update_id, update_id)
 
         message = update.get("message") or {}
         user = message.get("from") or {}
@@ -121,7 +132,7 @@ def main() -> int:
         state = {
             "month": month_key,
             "acknowledged": False,
-            "last_update_id": state.get("last_update_id"),
+            "last_update_id": normalize_update_id(state.get("last_update_id")),
         }
 
     if consume_target_replies(state):
