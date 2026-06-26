@@ -1,0 +1,38 @@
+name: FFXIV Telegram Reminder
+
+on:
+  schedule:
+    # 20:00 Asia/Shanghai = 12:00 UTC
+    - cron: "0 12 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run Telegram reminder
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_TARGET_USERNAME: ${{ vars.TELEGRAM_TARGET_USERNAME || 'tsuyuneko' }}
+          TELEGRAM_TARGET_USER_ID: ${{ secrets.TELEGRAM_TARGET_USER_ID }}
+          REMINDER_MESSAGE: ${{ vars.REMINDER_MESSAGE || '记得上号保部队房' }}
+          REMINDER_TIMEZONE: ${{ vars.REMINDER_TIMEZONE || 'Asia/Shanghai' }}
+        run: python scripts/reminder.py
+
+      - name: Commit reminder state
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: Update reminder state
+          file_pattern: state/reminder_state.json
