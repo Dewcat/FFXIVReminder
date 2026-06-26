@@ -1,70 +1,75 @@
 # FFXIVReminder
 
-GitHub Actions version of the Telegram reminder.
+基于 GitHub Actions 的 Telegram 提醒器。
 
-## What it does
+## 功能说明
 
-At 20:00 Asia/Shanghai every day, the workflow checks whether the target Telegram user has replied this month.
+每天 **Asia/Shanghai 时区 20:00**，工作流会检查目标 Telegram 用户本月是否已经回复过。
 
-- On the first run of each month, it sends: `记得上号保部队房`
-- If the target user has not replied, it sends the same message again every day at 20:00.
-- Once the target user replies with any text message, it stops sending reminders until the next month.
-- At the next month, the reminder cycle resets automatically.
+- 每个月第一次运行时，会发送：`记得上号保部队房`
+- 如果目标用户还没有回复，它会每天 20:00 继续发送同样的消息。
+- 一旦目标用户在私聊中回复了任意文字消息，它就会发送：`收到，下个月初再提醒你`，并停止发送提醒，直到下个月。
+- 群聊或超群里的消息不会被当作确认回复。
+- 到下个月时，提醒周期会自动重置。
 
-## Required GitHub Secrets
+## 必需的 GitHub Secrets
 
-Open the repository settings:
+打开仓库设置：
 
 `Settings` -> `Secrets and variables` -> `Actions` -> `Secrets`
 
-Add these secrets:
+添加以下 secrets：
 
-| Secret | Meaning |
+| Secret | 含义 |
 | --- | --- |
-| `TELEGRAM_BOT_TOKEN` | Your Telegram bot token from BotFather. |
-| `TELEGRAM_TARGET_USER_ID` | Your numeric Telegram user id. This is used to detect your replies and can also be used as the private-chat destination. |
+| `TELEGRAM_BOT_TOKEN` | 你从 BotFather 获取的 Telegram bot token。 |
+| `TELEGRAM_TARGET_USER_ID` | 你的 Telegram 数字用户 ID。用于检测你的私聊回复，也可以作为私聊发送目标。 |
 
-Optional secret:
+可选 secret：
 
-| Secret | Meaning |
+| Secret | 含义 |
 | --- | --- |
-| `TELEGRAM_CHAT_ID` | The chat id to send reminders to. For a private chat, this can usually be omitted if `TELEGRAM_TARGET_USER_ID` is set and you have already messaged the bot. |
+| `TELEGRAM_CHAT_ID` | 用于发送提醒的 chat id。对于私聊，如果已经设置了 `TELEGRAM_TARGET_USER_ID`，并且你已经给 bot 发过消息，通常可以不填。 |
 
-## Optional GitHub Variables
+## 可选的 GitHub Variables
 
-Open:
+打开：
 
 `Settings` -> `Secrets and variables` -> `Actions` -> `Variables`
 
-You can add:
+可以添加：
 
-| Variable | Default |
+| Variable | 默认值 |
 | --- | --- |
-| `TELEGRAM_TARGET_USERNAME` | Empty. Only needed if you prefer username matching instead of user-id matching. |
 | `REMINDER_MESSAGE` | `记得上号保部队房` |
+| `ACK_MESSAGE` | `收到，下个月初再提醒你` |
 | `REMINDER_TIMEZONE` | `Asia/Shanghai` |
 
-## Getting chat id and user id
+## 获取 chat id 和 user id
 
-1. Send any message to your Telegram bot.
-2. Open this URL in a browser, replacing `<TOKEN>` with your bot token:
+1. 给你的 Telegram bot 发送任意消息。
+2. 在浏览器中打开下面这个 URL，把 `<TOKEN>` 替换成你的 bot token：
 
 ```text
 https://api.telegram.org/bot<TOKEN>/getUpdates
 ```
 
-3. In the returned JSON:
-   - `message.chat.id` is `TELEGRAM_CHAT_ID`
-   - `message.from.id` is `TELEGRAM_TARGET_USER_ID`
+3. 在返回的 JSON 中：
+   - `message.chat.id` 是 `TELEGRAM_CHAT_ID`
+   - `message.from.id` 是 `TELEGRAM_TARGET_USER_ID`
 
-## Important note
+## 重要说明
 
-This workflow uses Telegram `getUpdates`, so the bot must not have an active webhook. If you previously set a webhook, clear it once:
+这个工作流使用 Telegram 的 `getUpdates`，所以这个 bot 不能同时启用 webhook。如果你之前设置过 webhook，需要先清除一次：
 
 ```text
 https://api.telegram.org/bot<TOKEN>/deleteWebhook
 ```
 
-## Manual test
+如果同一个 bot token 还被其他长期运行的程序通过 polling / `getUpdates` 监听消息，本工作流仍然可以发送提醒，但检测回复可能会被跳过。最稳妥的做法是给这个提醒器单独使用一个 Telegram bot。
 
-Go to `Actions` -> `FFXIV Telegram Reminder` -> `Run workflow`.
+## 手动测试
+
+进入：
+
+`Actions` -> `FFXIV Telegram Reminder` -> `Run workflow`
