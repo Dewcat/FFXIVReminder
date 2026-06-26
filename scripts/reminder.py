@@ -62,6 +62,10 @@ def is_target_user(user: dict) -> bool:
 
 
 def consume_target_replies(state: dict) -> bool:
+    if not TARGET_USER_ID:
+        print("Warning: TELEGRAM_TARGET_USER_ID is not set, so reply detection is disabled for this run.")
+        return False
+
     params = {
         "timeout": 0,
         "allowed_updates": json.dumps(["message"]),
@@ -107,10 +111,8 @@ def send_reminder() -> None:
 def main() -> int:
     if not BOT_TOKEN:
         raise RuntimeError("Missing TELEGRAM_BOT_TOKEN. Add it in Settings -> Secrets and variables -> Actions -> Secrets.")
-    if not TARGET_USER_ID:
-        raise RuntimeError("Missing TELEGRAM_TARGET_USER_ID. Add it in Settings -> Secrets and variables -> Actions -> Secrets.")
     if not CHAT_ID:
-        raise RuntimeError("Missing chat destination. Set TELEGRAM_CHAT_ID or TELEGRAM_TARGET_USER_ID.")
+        raise RuntimeError("Missing chat destination. Set TELEGRAM_CHAT_ID or TELEGRAM_TARGET_USER_ID in Settings -> Secrets and variables -> Actions -> Secrets.")
 
     state = load_state()
     month_key = current_month()
