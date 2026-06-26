@@ -10,8 +10,8 @@ from zoneinfo import ZoneInfo
 STATE_PATH = Path("state/reminder_state.json")
 
 BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
-TARGET_USERNAME = os.getenv("TELEGRAM_TARGET_USERNAME", "tsuyuneko").lstrip("@").lower()
-TARGET_USER_ID = os.getenv("TELEGRAM_TARGET_USER_ID", "1445032357").strip()
+TARGET_USERNAME = os.getenv("TELEGRAM_TARGET_USERNAME", "").lstrip("@").lower()
+TARGET_USER_ID = os.getenv("TELEGRAM_TARGET_USER_ID", "").strip()
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip() or TARGET_USER_ID
 REMINDER_MESSAGE = os.getenv("REMINDER_MESSAGE", "记得上号保部队房")
 TIMEZONE = os.getenv("REMINDER_TIMEZONE", "Asia/Shanghai")
@@ -51,7 +51,7 @@ def current_month() -> str:
 def is_target_user(user: dict) -> bool:
     if TARGET_USER_ID and str(user.get("id")) == TARGET_USER_ID:
         return True
-    return (user.get("username") or "").lower() == TARGET_USERNAME
+    return bool(TARGET_USERNAME) and (user.get("username") or "").lower() == TARGET_USERNAME
 
 
 def consume_target_replies(state: dict) -> bool:
@@ -85,6 +85,10 @@ def send_reminder() -> None:
 
 
 def main() -> int:
+    if not BOT_TOKEN:
+        raise RuntimeError("Set TELEGRAM_BOT_TOKEN as a GitHub Actions secret.")
+    if not TARGET_USER_ID and not TARGET_USERNAME:
+        raise RuntimeError("Set TELEGRAM_TARGET_USER_ID as a GitHub Actions secret or TELEGRAM_TARGET_USERNAME as a variable.")
     if not CHAT_ID:
         raise RuntimeError("Set TELEGRAM_CHAT_ID or TELEGRAM_TARGET_USER_ID.")
 
