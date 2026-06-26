@@ -25,7 +25,7 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          TELEGRAM_TARGET_USERNAME: ${{ vars.TELEGRAM_TARGET_USERNAME || 'tsuyuneko' }}
+          TELEGRAM_TARGET_USERNAME: ${{ vars.TELEGRAM_TARGET_USERNAME }}
           TELEGRAM_TARGET_USER_ID: ${{ secrets.TELEGRAM_TARGET_USER_ID }}
           REMINDER_MESSAGE: ${{ vars.REMINDER_MESSAGE || '记得上号保部队房' }}
           REMINDER_TIMEZONE: ${{ vars.REMINDER_TIMEZONE || 'Asia/Shanghai' }}
