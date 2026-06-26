@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime
@@ -9,8 +10,7 @@ from zoneinfo import ZoneInfo
 
 STATE_PATH = Path("state/reminder_state.json")
 
-BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
-TARGET_USERNAME = os.getenv("TELEGRAM_TARGET_USERNAME", "").lstrip("@").lower()
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 TARGET_USER_ID = os.getenv("TELEGRAM_TARGET_USER_ID", "").strip()
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip() or TARGET_USER_ID
 REMINDER_MESSAGE = os.getenv("REMINDER_MESSAGE", "记得上号保部队房")
@@ -19,14 +19,23 @@ TIMEZONE = os.getenv("REMINDER_TIMEZONE", "Asia/Shanghai")
 API_BASE = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 
+class TelegramApiError(RuntimeError):
+    pass
+
+
 def telegram_api(method: str, params: dict | None = None) -> dict:
     params = params or {}
     data = urllib.parse.urlencode(params).encode("utf-8")
     request = urllib.request.Request(f"{API_BASE}/{method}", data=data, method="POST")
-    with urllib.request.urlopen(request, timeout=30) as response:
-        payload = json.loads(response.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as error:
+        body = error.read().decode("utf-8", errors="replace")
+        raise TelegramApiError(f"Telegram API {method} HTTP {error.code}: {body}") from error
+
     if not payload.get("ok"):
-        raise RuntimeError(f"Telegram API {method} failed: {payload}")
+        raise TelegramApiError(f"Telegram API {method} failed: {payload}")
     return payload
 
 
@@ -49,9 +58,7 @@ def current_month() -> str:
 
 
 def is_target_user(user: dict) -> bool:
-    if TARGET_USER_ID and str(user.get("id")) == TARGET_USER_ID:
-        return True
-    return bool(TARGET_USERNAME) and (user.get("username") or "").lower() == TARGET_USERNAME
+    return bool(TARGET_USER_ID) and str(user.get("id")) == TARGET_USER_ID
 
 
 def consume_target_replies(state: dict) -> bool:
@@ -62,9 +69,16 @@ def consume_target_replies(state: dict) -> bool:
     if "last_update_id" in state:
         params["offset"] = int(state["last_update_id"]) + 1
 
-    payload = telegram_api("getUpdates", params)
-    updates = payload.get("result", [])
+    try:
+        payload = telegram_api("getUpdates", params)
+    except TelegramApiError as error:
+        error_text = str(error)
+        if "Conflict" in error_text or "terminated by other getUpdates request" in error_text:
+            print("Warning: getUpdates is currently occupied by another bot process. Reminder sending will continue, but reply detection will be skipped in this run.")
+            return False
+        raise
 
+    updates = payload.get("result", [])
     found_reply = False
     for update in updates:
         update_id = update.get("update_id")
@@ -81,16 +95,22 @@ def consume_target_replies(state: dict) -> bool:
 
 
 def send_reminder() -> None:
-    telegram_api("sendMessage", {"chat_id": CHAT_ID, "text": REMINDER_MESSAGE})
+    try:
+        telegram_api("sendMessage", {"chat_id": CHAT_ID, "text": REMINDER_MESSAGE})
+    except TelegramApiError as error:
+        error_text = str(error)
+        if "chat not found" in error_text.lower() or "bot can't initiate conversation" in error_text.lower():
+            raise RuntimeError("Telegram could not send the private message. Open Telegram and send /start or any message to this bot first, then rerun the workflow.") from error
+        raise
 
 
 def main() -> int:
     if not BOT_TOKEN:
-        raise RuntimeError("Set TELEGRAM_BOT_TOKEN as a GitHub Actions secret.")
-    if not TARGET_USER_ID and not TARGET_USERNAME:
-        raise RuntimeError("Set TELEGRAM_TARGET_USER_ID as a GitHub Actions secret or TELEGRAM_TARGET_USERNAME as a variable.")
+        raise RuntimeError("Missing TELEGRAM_BOT_TOKEN. Add it in Settings -> Secrets and variables -> Actions -> Secrets.")
+    if not TARGET_USER_ID:
+        raise RuntimeError("Missing TELEGRAM_TARGET_USER_ID. Add it in Settings -> Secrets and variables -> Actions -> Secrets.")
     if not CHAT_ID:
-        raise RuntimeError("Set TELEGRAM_CHAT_ID or TELEGRAM_TARGET_USER_ID.")
+        raise RuntimeError("Missing chat destination. Set TELEGRAM_CHAT_ID or TELEGRAM_TARGET_USER_ID.")
 
     state = load_state()
     month_key = current_month()
