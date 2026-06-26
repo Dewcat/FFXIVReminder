@@ -22,8 +22,13 @@ Add these secrets:
 | Secret | Meaning |
 | --- | --- |
 | `TELEGRAM_BOT_TOKEN` | Your Telegram bot token from BotFather. |
-| `TELEGRAM_CHAT_ID` | The chat id to send reminders to. For a private chat, send one message to your bot first, then get the chat id from `getUpdates`. |
-| `TELEGRAM_TARGET_USER_ID` | Optional but recommended. Your numeric Telegram user id. This is more stable than username matching. |
+| `TELEGRAM_TARGET_USER_ID` | Your numeric Telegram user id. This is used to detect your replies and can also be used as the private-chat destination. |
+
+Optional secret:
+
+| Secret | Meaning |
+| --- | --- |
+| `TELEGRAM_CHAT_ID` | The chat id to send reminders to. For a private chat, this can usually be omitted if `TELEGRAM_TARGET_USER_ID` is set and you have already messaged the bot. |
 
 ## Optional GitHub Variables
 
@@ -35,7 +40,7 @@ You can add:
 
 | Variable | Default |
 | --- | --- |
-| `TELEGRAM_TARGET_USERNAME` | `tsuyuneko` |
+| `TELEGRAM_TARGET_USERNAME` | Empty. Only needed if you prefer username matching instead of user-id matching. |
 | `REMINDER_MESSAGE` | `记得上号保部队房` |
 | `REMINDER_TIMEZONE` | `Asia/Shanghai` |
 
