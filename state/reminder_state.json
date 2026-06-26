@@ -1,6 +1,6 @@
 {
   "month": "2026-06",
-  "acknowledged": false,
-  "last_update_id": null,
+  "acknowledged": true,
+  "last_update_id": 167416077,
   "last_sent_at": "2026-06-27T01:42:14.490881+08:00"
 }
