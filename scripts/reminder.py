@@ -13,9 +13,10 @@ STATE_PATH = Path("state/reminder_state.json")
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 TARGET_USER_ID = os.getenv("TELEGRAM_TARGET_USER_ID", "").strip()
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip() or TARGET_USER_ID
-REMINDER_MESSAGE = os.getenv("REMINDER_MESSAGE", "记得上号保部队房")
-ACK_MESSAGE = os.getenv("ACK_MESSAGE", "收到，下个月初再提醒你")
+REMINDER_MESSAGE = os.getenv("REMINDER_MESSAGE", "记得上号保部队房，你已经 {days} 天没进了。")
+ACK_MESSAGE = os.getenv("ACK_MESSAGE", "收到，计时已重置为 1 天。")
 TIMEZONE = os.getenv("REMINDER_TIMEZONE", "Asia/Shanghai")
+REMINDER_THRESHOLD_DAYS = int(os.getenv("REMINDER_THRESHOLD_DAYS", "30"))
 
 API_BASE = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
@@ -54,8 +55,12 @@ def save_state(state: dict) -> None:
     STATE_PATH.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
-def current_month() -> str:
-    return datetime.now(ZoneInfo(TIMEZONE)).strftime("%Y-%m")
+def now_local() -> datetime:
+    return datetime.now(ZoneInfo(TIMEZONE))
+
+
+def today_iso() -> str:
+    return now_local().date().isoformat()
 
 
 def normalize_update_id(value):
@@ -65,6 +70,20 @@ def normalize_update_id(value):
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def parse_iso_date(value: str):
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except (TypeError, ValueError):
+        return None
+
+
+def format_message(template: str, days: int) -> str:
+    try:
+        return template.format(days=days)
+    except (KeyError, ValueError):
+        return template
 
 
 def is_private_target_reply(message: dict) -> bool:
@@ -77,11 +96,11 @@ def is_private_target_reply(message: dict) -> bool:
     if not TARGET_USER_ID or str(user.get("id")) != TARGET_USER_ID:
         return False
 
-    # Only count direct private messages to this bot. Messages from groups or supergroups must not acknowledge the reminder.
+    # Only count direct private messages to this bot. Messages from groups or supergroups must not reset the timer.
     if chat.get("type") != "private":
         return False
 
-    # In private chats, Telegram chat id normally equals user id. This extra check prevents accidental acknowledgement from another private chat.
+    # In private chats, Telegram chat id normally equals user id. This extra check prevents accidental resets from another private chat.
     return str(chat.get("id")) == TARGET_USER_ID
 
 
@@ -126,9 +145,38 @@ def send_message(text: str) -> None:
     telegram_api("sendMessage", {"chat_id": CHAT_ID, "text": text})
 
 
-def send_reminder() -> None:
+def reset_timer(state: dict, login_date: str) -> None:
+    state["last_login_date"] = login_date
+    state["day_count"] = 1
+    state["last_reset_at"] = now_local().isoformat()
+    state.pop("acknowledged", None)
+    state.pop("month", None)
+    state.pop("last_reminder_sent_date", None)
+    state.pop("last_reminder_day_count", None)
+
+
+def ensure_timer_started(state: dict, start_date: str) -> None:
+    if parse_iso_date(state.get("last_login_date")) is not None:
+        return
+    state["last_login_date"] = start_date
+    state["day_count"] = 1
+    state["timer_started_at"] = now_local().isoformat()
+    state.pop("acknowledged", None)
+    state.pop("month", None)
+
+
+def days_without_login(state: dict, current_date: str) -> int:
+    login_date = parse_iso_date(state.get("last_login_date"))
+    current = parse_iso_date(current_date)
+    if login_date is None or current is None:
+        return 1
+    return max((current - login_date).days + 1, 1)
+
+
+def send_reminder(days: int) -> None:
+    text = format_message(REMINDER_MESSAGE, days)
     try:
-        send_message(REMINDER_MESSAGE)
+        send_message(text)
     except TelegramApiError as error:
         error_text = str(error)
         if "chat not found" in error_text.lower() or "bot can't initiate conversation" in error_text.lower():
@@ -148,33 +196,39 @@ def main() -> int:
         raise RuntimeError("Missing TELEGRAM_BOT_TOKEN. Add it in Settings -> Secrets and variables -> Actions -> Secrets.")
     if not CHAT_ID:
         raise RuntimeError("Missing chat destination. Set TELEGRAM_CHAT_ID or TELEGRAM_TARGET_USER_ID in Settings -> Secrets and variables -> Actions -> Secrets.")
+    if REMINDER_THRESHOLD_DAYS < 1:
+        raise RuntimeError("REMINDER_THRESHOLD_DAYS must be at least 1.")
 
     state = load_state()
-    month_key = current_month()
-
-    if state.get("month") != month_key:
-        state = {
-            "month": month_key,
-            "acknowledged": False,
-            "last_update_id": normalize_update_id(state.get("last_update_id")),
-        }
+    current_date = today_iso()
 
     if consume_target_replies(state):
-        state["acknowledged"] = True
+        reset_timer(state, current_date)
         save_state(state)
         send_acknowledgement()
-        print("Target user replied in private chat. Reminder is paused until next month.")
+        print("Target user replied in private chat. Timer reset to day 1.")
         return 0
 
-    if state.get("acknowledged"):
+    ensure_timer_started(state, current_date)
+    days = days_without_login(state, current_date)
+    state["day_count"] = days
+
+    if days >= REMINDER_THRESHOLD_DAYS:
+        if state.get("last_reminder_sent_date") == current_date:
+            save_state(state)
+            print(f"Reminder already sent today. Current day count: {days}.")
+            return 0
+
+        send_reminder(days)
+        state["last_sent_at"] = now_local().isoformat()
+        state["last_reminder_sent_date"] = current_date
+        state["last_reminder_day_count"] = days
         save_state(state)
-        print("Already acknowledged this month. No reminder sent.")
+        print(f"Reminder sent. Current day count: {days}.")
         return 0
 
-    send_reminder()
-    state["last_sent_at"] = datetime.now(ZoneInfo(TIMEZONE)).isoformat()
     save_state(state)
-    print("Reminder sent.")
+    print(f"Current day count: {days}. Reminder threshold is {REMINDER_THRESHOLD_DAYS}; no reminder sent.")
     return 0
 
 
