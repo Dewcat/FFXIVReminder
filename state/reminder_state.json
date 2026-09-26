@@ -1,7 +1,9 @@
 {
   "last_login_date": "2026-08-29",
-  "day_count": 29,
+  "day_count": 30,
   "last_update_id": 167416080,
   "last_reset_at": "2026-08-29T06:17:48.548206+08:00",
-  "last_sent_at": "2026-08-28T06:14:52.326090+08:00"
+  "last_sent_at": "2026-09-27T00:22:06.417822+08:00",
+  "last_reminder_sent_date": "2026-09-27",
+  "last_reminder_day_count": 30
 }
